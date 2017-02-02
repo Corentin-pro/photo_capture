@@ -1,0 +1,6 @@
+.DS_Store
+.vscode
+capture/static/bower_components/*
+capture/static/photos/*
+*.pyc
+*.log

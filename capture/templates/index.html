@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Leapmind photo capture</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='bower_components/bootstrap/dist/css/bootstrap.min.css') }}">
+  <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='bower_components/font-awesome/css/font-awesome.min.css') }}">
+  <script src="{{ url_for('static', filename='bower_components/bootstrap/dist/js/bootstrap.min.js') }}" type="text/javascript"></script>
+  <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/index.css') }}">
+</head>
+<body>
+  <section class="container-fluid">
+    <h1>Photo capture</h1>
+    <div class="container-button">
+      <button id="button-start" onclick="start_capture()" title="Start capture">&nbsp;</button>
+      <button id="button-stop" onclick="stop_capture()" title="Stop capture">&nbsp;</button>
+      <span id="action-result"></span>
+      <form action="/api/upload" method="post" enctype="multipart/form-data"><input type="file" name="movie" /><input type="submit" value="Upload video"></form>
+      <button id="button-refresh" onclick="refresh_photos()" title="Refresh photos">&nbsp;</button>
+    </div>
+    <div id="video-container"></div>
+    <form id="photo-container" action="/api/download" method="post" enctype="application/x-www-form-urlencoded"></form>
+  </section>
+
+  <script>
+var start_button_element = document.getElementById("button-start");
+var stop_button_element = document.getElementById("button-stop");
+var action_result_element = document.getElementById("action-result");
+var video_container_element = document.getElementById("video-container");
+var photo_container_element = document.getElementById("photo-container");
+
+function start_capture()
+{
+  var http_request = new XMLHttpRequest();
+  http_request.onreadystatechange = function()
+  {
+    if (this.readyState == 4 && this.status == 200)
+    {
+      if(result_json = JSON.parse(this.responseText))
+      {
+        action_result_element.innerHTML = result_json.message;
+        if('ok' === result_json.status)
+        {
+          // Disable start button if start action was ok
+          if(!start_button_element.classList.contains('disabled'))
+          {
+            start_button_element.classList.add('disabled');
+          }
+        }
+      }
+      else
+      {
+        action_result_element.innerHTML = 'No response';
+      }
+    }
+  };
+  http_request.open('POST', '/api/start_capture', true);
+  http_request.send();
+}
+
+function stop_capture()
+{
+  var http_request = new XMLHttpRequest();
+  http_request.onreadystatechange = function()
+  {
+    if (this.readyState == 4 && this.status == 200)
+    {
+      if(result_json = JSON.parse(this.responseText))
+      {
+        action_result_element.innerHTML = result_json.message;
+        if('ok' === result_json.status)
+        {
+          setTimeout( refresh_photos(), 500000); // 0.5 sec delay
+        }
+      }
+      else
+      {
+        action_result_element.innerHTML = 'No response';
+      }
+
+      // Re-enable start button in all cases
+      if(start_button_element.classList.contains('disabled'))
+      {
+        start_button_element.classList.remove('disabled');
+      }
+    }
+  };
+  http_request.open('POST', '/api/stop_capture', true);
+  http_request.send();
+}
+
+function refresh_photos()
+{
+  while (video_container_element.hasChildNodes())
+  {
+    video_container_element.removeChild(video_container_element.lastChild);
+  }
+  while (photo_container_element.hasChildNodes())
+  {
+    photo_container_element.removeChild(photo_container_element.lastChild);
+  }
+
+  var http_request = new XMLHttpRequest();
+  http_request.onreadystatechange = function()
+  {
+    if (this.readyState == 4 && this.status == 200)
+    {
+      /*
+      // Refreshing the video
+      var new_video_element = document.createElement('video');
+      // new_video_element.setAttribute('control', null);
+      var source_element = document.createElement('source');
+      source_element.src = '/static/photos/output.mp4';
+      source_element.setAttribute('type','video/mp4');
+      new_video_element.appendChild(source_element);
+      video_container_element.appendChild(new_video_element);
+      */
+      if(result_json = JSON.parse(this.responseText))
+      {
+        var new_photo_div;
+        var new_photo_checkbox;
+        var new_photo_label;
+        var new_photo_img;
+        var date = new Date();
+        var id = 0;
+        result_json.message.forEach( function(photo) {
+          new_photo_div = document.createElement('div');
+          new_photo_checkbox = document.createElement('input');
+          new_photo_checkbox.className = 'checkbox';
+          new_photo_checkbox.type = 'checkbox';
+          new_photo_checkbox.name = 'photos[]';
+          new_photo_checkbox.value = photo.name;
+          new_photo_checkbox.id = id;
+          new_photo_label = document.createElement('label');
+          new_photo_label.title = photo.name;
+          new_photo_label.setAttribute('for', id);
+          new_photo_img = document.createElement('img');
+          new_photo_img.src = photo.path + '?' + date.getTime();
+
+          new_photo_label.appendChild(new_photo_img);
+          new_photo_div.appendChild(new_photo_checkbox);
+          new_photo_div.appendChild(new_photo_label);
+          photo_container_element.appendChild(new_photo_div);
+          id += 1;
+        });
+        new_photo_div = document.createElement('input');
+        new_photo_div.type = 'submit';
+        new_photo_div.value = 'Get photos';
+        photo_container_element.appendChild(new_photo_div);
+      }
+    }
+  };
+  http_request.open('POST', '/api/refresh', true);
+  http_request.send();
+}
+  </script>
+
+</body>
+
+</html>

@@ -1,0 +1,12 @@
+#!/bin/bash
+
+echo -e "\n\e[1mMake sure you have docker installed and running. Ask help if needed\e[0m\n"
+echo -e "You can exit this application at any given time using \e[1;31mCTRL+c\e[0m"
+echo -e "To access the interface please visit http://localhost:8080 from your web browser\n"
+docker-compose up capture-no-camera
+if [ $? -ne 0 ]; then
+    echo
+    echo $?
+    echo -e "\e[1;31The application failed to start. Did you plug a camera?\e[0m"
+fi
+docker-compose down &> /dev/null

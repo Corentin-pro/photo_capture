@@ -1,0 +1,36 @@
+version: '2'
+services:
+
+  photo_capture:
+    command: python app.py
+    build:
+      context: docker-build/
+      dockerfile: Dockerfile
+    image: leapmind/capture
+    working_dir: /home/docker/
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./capture:/home/docker/
+    devices:
+      - /dev/video0:/dev/video0
+    environment:
+      - PYTHONPATH=/home/docker/
+      - PORT=8080
+      - DEBUG=1
+
+  photo_capture_no_camera:
+    command: python app.py
+    build:
+      context: docker-build/
+      dockerfile: Dockerfile
+    image: leapmind/capture
+    working_dir: /home/docker/
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./capture:/home/docker/
+    environment:
+      - PYTHONPATH=/home/docker/
+      - PORT=8080
+      - DEBUG=1
