@@ -4,12 +4,9 @@ MAINTAINER corentin-pro@mail.com
 
 ADD requirements.txt /tmp/requirements.txt
 
-# install apt-repository
-RUN apt-get update && apt-get -y install software-properties-common \
-    # install packages
-    && apt-get install -y --no-install-recommends \
-    python \
-    python-dev \
+# Install packages
+RUN apt-get update && apt-get -y install --no-install-recommends \
+    software-properties-common \
     wget \
     v4l-utils \
     ffmpeg \

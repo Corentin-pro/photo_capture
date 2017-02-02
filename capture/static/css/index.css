@@ -94,6 +94,11 @@ label
 {
     width: 100%;
 }
+#photo-container label
+{
+    display: block;
+    font-size: 0;
+}
 #video-container > *
 {
     height: 200px;
