@@ -2,5 +2,6 @@
 .vscode
 capture/static/bower_components/*
 capture/static/photos/*
+capture/storage/*
 *.pyc
 *.log

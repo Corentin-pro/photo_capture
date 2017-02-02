@@ -14,10 +14,14 @@ import os
 import sys
 from logging import handlers, StreamHandler
 import logging
+import signal
 import subprocess
+import threading
+import time
 
 from flask import Flask, jsonify, redirect, request
-from flask_cors import CORS
+import pygame
+import pygame.camera
 
 from config import Config
 from controllers import index_controller
@@ -30,12 +34,34 @@ class PhotoCapture(object):
     app = Flask(__name__)
     app.config.from_object('config.Config')
 
-    CORS(app)  # cross domain でアクセス可能にする
-
-    # Easy global variable to keep track of the capturing process
-    capture_process = None
-    photo_process = None
     logger = logging.getLogger("capture")
+
+    video_process = None
+
+    capture_on = False
+
+    @staticmethod
+    def capture_photo(fps):
+        """
+        This function takes pictures from the camera.
+        It is meant to be threaded and started/stopped changing the class variable capture_on.
+        (capture_on should be True before before starting this function)
+        """
+        pygame.camera.init()
+        cam = pygame.camera.Camera("/dev/video0", (1024, 768))
+        cam.start()
+        PhotoCapture.logger.info("Capture start")
+        photo_iterator = 1
+        while PhotoCapture.capture_on:
+            pygame.image.save(
+                cam.get_image(),
+                os.path.join(Config.PHOTOS_DIR, "photo{:0>2d}.jpg".format(photo_iterator)))
+            photo_iterator += 1
+            time.sleep(1/fps)
+            if photo_iterator > 999:
+                PhotoCapture.capture_on = False
+        cam.stop()
+        PhotoCapture.logger.info("Capture stop")
 
     # ========== Routing ==========
 
@@ -48,28 +74,25 @@ class PhotoCapture(object):
     # ========== API ==========
 
     @staticmethod
-    @app.route('/api/start_capture', methods=['POST'])
-    def start_capture():
+    @app.route('/api/start_capture/<int:fps>', methods=['POST'])
+    def start_capture(fps):
         """Retrieves photos info"""
 
         return_status = "error"
         return_message = "Unknown error"
+
+        # Hard limit on fps at 30
+        if fps > 30:
+            fps = 30
         # Check no process is running
-        if PhotoCapture.capture_process is None or PhotoCapture.capture_process.returncode is not None:
-
-            # Killing the photo process before starting a new capture
-            if PhotoCapture.photo_process is not None:
-                if PhotoCapture.photo_process.returncode is None:
-                    PhotoCapture.photo_process.kill()
-                    PhotoCapture.photo_process = None
-
-            PhotoCapture.logger.info("Starting the capture")
-            # Max 1 min
-            command = "ffmpeg -y -f v4l2 -t 00:01:00 -i /dev/video0 " + os.path.join(Config.PHOTOS_DIR, "output.mp4")
-            PhotoCapture.capture_process = subprocess.Popen(command, shell=True, stdin=subprocess.PIPE)
-
+        if not PhotoCapture.capture_on:
             # Cleaning previous photos
             subprocess.call("rm " + Config.PHOTOS_DIR + "/*.jpg", shell=True)
+
+            PhotoCapture.capture_on = True
+            PhotoCapture.logger.info("Starting the capture")
+            capture_thread = threading.Thread(target=PhotoCapture.capture_photo, args=(fps,))
+            capture_thread.start()
             return_status = "ok"
             return_message = "Capture started"
         else:
@@ -85,26 +108,11 @@ class PhotoCapture(object):
 
         return_status = "error"
         return_message = "Unknown error"
+        # PhotoCapture.logger.info("Threads :")
+        # PhotoCapture.logger.info(threading.enumerate())
         # Kill previous capture process and process the video
-        if PhotoCapture.capture_process is not None:
-            if PhotoCapture.capture_process.returncode is None:
-                PhotoCapture.logger.info("Stoping the capture")
-                PhotoCapture.capture_process.communicate("q")
-            capture_return_code = PhotoCapture.capture_process.wait()
-            PhotoCapture.logger.info("Capture ended with code : %d", capture_return_code)
-            PhotoCapture.capture_process = None
-
-            command = "ffmpeg -i "\
-                + os.path.join(Config.PHOTOS_DIR, "output.mp4")\
-                + " -r 1 -f image2 -v warning -y "\
-                + os.path.join(Config.PHOTOS_DIR, "photo%3d.jpg")
-
-            # Killing the photo process before starting a new one
-            if PhotoCapture.photo_process is not None:
-                if PhotoCapture.photo_process.returncode is None:
-                    PhotoCapture.photo_process.kill()
-                    PhotoCapture.photo_process = None
-            PhotoCapture.photo_process = subprocess.Popen(command, shell=True)
+        if PhotoCapture.capture_on:
+            PhotoCapture.capture_on = False
             return_status = "ok"
             return_message = "Capture stoped"
         else:
@@ -118,15 +126,25 @@ class PhotoCapture(object):
     def photos():
         """Retrieves photos info"""
 
-        # Waiting for the photo process to finish
-        if PhotoCapture.photo_process is not None:
-            PhotoCapture.photo_process.wait()
-
         photo_list = []
         file_list = sorted(os.listdir(Config.PHOTOS_DIR))
         for file_name in file_list:
             if file_name.endswith(".jpg"):
                 photo_list.append({"path": os.path.join(Config.PHOTOS_DIR, file_name), "name": file_name})
+        return jsonify(status="ok", message=photo_list)
+
+    @staticmethod
+    @app.route('/api/refresh/<int:offset>', methods=['POST'])
+    def photos_offseted(offset):
+        """Retrieves photos info (with offset)"""
+
+        photo_list = []
+        file_list = sorted(os.listdir(Config.PHOTOS_DIR))
+        if offset < len(file_list):
+            file_list = file_list[offset:]
+            for file_name in file_list:
+                if file_name.endswith(".jpg"):
+                    photo_list.append({"path": os.path.join(Config.PHOTOS_DIR, file_name), "name": file_name})
         return jsonify(status="ok", message=photo_list)
 
     @staticmethod
@@ -148,28 +166,32 @@ class PhotoCapture(object):
         return redirect(zip_path)
 
     @staticmethod
-    @app.route('/api/upload', methods=['POST'])
-    def upload():
+    @app.route('/api/upload/<int:fps>', methods=['POST'])
+    def upload(fps):
         """Upload video"""
 
         movie_file = request.files['movie']
         if movie_file:
+
+            # Killing previous video process
+            if PhotoCapture.video_process:
+                if not PhotoCapture.video_process.returncode:
+                    PhotoCapture.logger.info("Stopping previous process")
+                    # Killing all the ffmep processes/subprocesses
+                    subprocess.call("kill -9 $(pidof ffmpeg)", shell=True)
+                PhotoCapture.video_process = None
+
             movie_file.save(os.path.join(Config.PHOTOS_DIR, "output.mp4"))
 
             # Cleaning previous photos
             subprocess.call("rm " + Config.PHOTOS_DIR + "/*.jpg", shell=True)
 
-            command = "ffmpeg -i "\
-                + os.path.join(Config.PHOTOS_DIR, "output.mp4")\
-                + " -r 1 -f image2 -v warning -y "\
-                + os.path.join(Config.PHOTOS_DIR, "photo%3d.jpg")
+            command = "ffmpeg -i %s  -r %d -f image2 -v warning -y %s" %\
+                (os.path.join(Config.PHOTOS_DIR, "output.mp4"),
+                 fps,
+                 os.path.join(Config.PHOTOS_DIR, "photo%3d.jpg"))
 
-            # Killing the photo process before starting a new one
-            if PhotoCapture.photo_process is not None:
-                if PhotoCapture.photo_process.returncode is None:
-                    PhotoCapture.photo_process.kill()
-                    PhotoCapture.photo_process = None
-            PhotoCapture.photo_process = subprocess.Popen(command, shell=True)
+            PhotoCapture.video_process = subprocess.Popen(command, shell=True)
 
         return redirect("/")
 

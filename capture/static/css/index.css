@@ -25,6 +25,10 @@ h1
 {
     text-align: center;
 }
+input[type="range"]
+{
+    width: 300px;
+}
 label
 {
     cursor: pointer;
@@ -83,6 +87,8 @@ label
     min-height: 50px;
     background: rgba(125,125,125,0.1);
     border-radius: 5px;
+    max-height: 66vh;
+    overflow-y: auto;
 }
 #photo-container > *
 {

@@ -7,6 +7,7 @@ ADD requirements.txt /tmp/requirements.txt
 # Install packages
 RUN apt-get update && apt-get -y install --no-install-recommends \
     software-properties-common \
+    python-pygame \
     wget \
     v4l-utils \
     ffmpeg \
