@@ -14,7 +14,6 @@ import os
 import sys
 from logging import handlers, StreamHandler
 import logging
-import signal
 import subprocess
 import threading
 import time
@@ -232,7 +231,7 @@ class PhotoCapture(object):
             debug=PhotoCapture.app.config['DEBUG'],
             host='0.0.0.0',
             port=PhotoCapture.app.config['PORT'],
-            threaded=False)
+            threaded=True)
 
 
 if __name__ == '__main__':
